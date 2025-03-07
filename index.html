@@ -9,9 +9,72 @@
 </head>
 <body>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/perlin-noise@1.0.0/perlin.js"></script>
-
+    <!-- Removemos a dependência externa do Perlin Noise -->
+    
 <script>
+// Implementação simples de ruído de valor (substituto básico)
+class Noise {
+    constructor() {
+        this.grad3 = [[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0], 
+                      [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+                      [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]];
+    }
+
+    dot(g, x, y, z) {
+        return g[0]*x + g[1]*y + g[2]*z;
+    }
+
+    mix(a, b, t) {
+        return (1.0 - t)*a + t*b;
+    }
+
+    fade(t) {
+        return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+
+    noise(x, y, z) {
+        const X = Math.floor(x) & 255;
+        const Y = Math.floor(y) & 255;
+        const Z = Math.floor(z) & 255;
+
+        x -= Math.floor(x);
+        y -= Math.floor(y);
+        z -= Math.floor(z);
+
+        const u = this.fade(x);
+        const v = this.fade(y);
+        const w = this.fade(z);
+
+        const A  = p[X  ]+Y, AA = p[A]+Z, AB = p[A+1]+Z;
+        const B  = p[X+1]+Y, BA = p[B]+Z, BB = p[B+1]+Z;
+
+        return this.mix(
+            this.mix(this.mix(this.dot(this.grad3[p[AA  ]], x  , y  , z  ), 
+                              this.dot(this.grad3[p[BA  ]], x-1, y  , z  ), u),
+                     this.mix(this.dot(this.grad3[p[AB  ]], x  , y-1, z  ), 
+                              this.dot(this.grad3[p[BB  ]], x-1, y-1, z  ), u), v),
+            this.mix(this.mix(this.dot(this.grad3[p[AA+1]], x  , y  , z-1), 
+                              this.dot(this.grad3[p[BA+1]], x-1, y  , z-1), u),
+                     this.mix(this.dot(this.grad3[p[AB+1]], x  , y-1, z-1), 
+                              this.dot(this.grad3[p[BB+1]], x-1, y-1, z-1), u), v), w);
+    }
+}
+
+// Permutation table for noise
+const p = new Array(512);
+const permutation = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,
+    140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,
+    62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,
+    168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,
+    133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,
+    209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,
+    173,186,3,64,52,217,226,250,164,30,89,239,106,251,117,18,169,200,196,135,130,
+    116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,164,30,89,239,106,
+    251,124,76,139,250,167,30,203,84,244,102,245,252,35,255,246,247,248,249,250];
+for (let i=0; i < 256 ; i++) p[256+i] = p[i] = permutation[i]; 
+
+const noise = new Noise();
+
 // Scene setup
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
@@ -36,9 +99,9 @@ function generateTerrain() {
         const x = geometry.attributes.position.getX(i);
         const z = geometry.attributes.position.getZ(i);
         
-        // Generate height using Perlin noise
-        const height = perlin.simplex2(x * 0.1, z * 0.1) * 5;
-        geometry.attributes.position.setZ(i, height);
+        // Usando nossa implementação de ruído
+        const height = noise.noise(x * 0.1, z * 0.1, 0) * 5;
+        geometry.attributes.position.setY(i, height);
     }
     
     geometry.computeVertexNormals();
@@ -66,7 +129,7 @@ skyUniforms['rayleigh'].value = 2;
 skyUniforms['mieCoefficient'].value = 0.005;
 skyUniforms['mieDirectionalG'].value = 0.8;
 
-// Position sun
+// Posição do sol
 const theta = Math.PI * (0.5);
 const phi = 2 * Math.PI * (0.25);
 
@@ -77,7 +140,7 @@ sun.z = Math.sin(phi) * Math.cos(theta);
 skyUniforms['sunPosition'].value.copy(sun);
 scene.environment = sky;
 
-// Lighting
+// Iluminação
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
@@ -85,11 +148,11 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
 directionalLight.position.copy(sun);
 scene.add(directionalLight);
 
-// Camera setup
+// Configuração da câmera
 camera.position.set(0, 10, 15);
 camera.lookAt(hero.position);
 
-// Controls
+// Controles
 const controls = {
     moveForward: false,
     moveBackward: false,
@@ -129,27 +192,25 @@ document.addEventListener('keyup', (event) => {
     }
 });
 
-// Collision detection
+// Detecção de colisão
 function checkCollision() {
     const origin = hero.position.clone();
-    origin.y -= 1; // Check below the hero
+    origin.y -= 1;
     
     const raycaster = new THREE.Raycaster(origin, new THREE.Vector3(0, -1, 0), 0, 2);
     const intersects = raycaster.intersectObjects(scene.children);
     
     if (intersects.length > 0 && intersects[0].distance < 1.5) {
-        hero.position.y += 0.2; // Bump up if too close to ground
+        hero.position.y += 0.2;
     }
 }
 
-// Animation loop
+// Loop de animação
 function animate() {
     requestAnimationFrame(animate);
     
     const speed = 0.2;
-    const lookSpeed = 0.05;
     
-    // Movement
     if (controls.moveForward) hero.translateZ(-speed);
     if (controls.moveBackward) hero.translateZ(speed);
     if (controls.moveLeft) hero.translateX(-speed);
@@ -157,7 +218,7 @@ function animate() {
     if (controls.moveUp) hero.position.y += speed;
     if (controls.moveDown) hero.position.y -= speed;
     
-    // Camera follow
+    // Atualiza a câmera
     camera.position.lerp(new THREE.Vector3(
         hero.position.x,
         hero.position.y + 5,
@@ -173,7 +234,7 @@ function animate() {
 
 animate();
 
-// Window resize handling
+// Tratamento de redimensionamento
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -181,4 +242,4 @@ window.addEventListener('resize', () => {
 });
 </script>
 </body>
-  </html>
+</html>
