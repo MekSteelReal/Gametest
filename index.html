@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flying Hero Game</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/perlin-noise@1.0.0/perlin.js"></script>
+
+<script>
+// Scene setup
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Hero setup
+const heroGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+const heroMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+const hero = new THREE.Mesh(heroGeometry, heroMaterial);
+scene.add(hero);
+hero.position.set(0, 5, 0);
+
+// Terrain generation
+function generateTerrain() {
+    const terrainWidth = 100;
+    const terrainDepth = 100;
+    const geometry = new THREE.PlaneGeometry(terrainWidth, terrainDepth, 100, 100);
+    
+    for (let i = 0; i < geometry.attributes.position.count; i++) {
+        const x = geometry.attributes.position.getX(i);
+        const z = geometry.attributes.position.getZ(i);
+        
+        // Generate height using Perlin noise
+        const height = perlin.simplex2(x * 0.1, z * 0.1) * 5;
+        geometry.attributes.position.setZ(i, height);
+    }
+    
+    geometry.computeVertexNormals();
+    
+    const material = new THREE.MeshPhongMaterial({
+        color: 0x00ff00,
+        side: THREE.DoubleSide
+    });
+    
+    const terrain = new THREE.Mesh(geometry, material);
+    terrain.rotation.x = -Math.PI / 2;
+    scene.add(terrain);
+}
+
+generateTerrain();
+
+// Sky setup
+const sky = new THREE.Sky();
+scene.add(sky);
+
+const sun = new THREE.Vector3();
+const skyUniforms = sky.material.uniforms;
+skyUniforms['turbidity'].value = 10;
+skyUniforms['rayleigh'].value = 2;
+skyUniforms['mieCoefficient'].value = 0.005;
+skyUniforms['mieDirectionalG'].value = 0.8;
+
+// Position sun
+const theta = Math.PI * (0.5);
+const phi = 2 * Math.PI * (0.25);
+
+sun.x = Math.cos(phi);
+sun.y = Math.sin(phi) * Math.sin(theta);
+sun.z = Math.sin(phi) * Math.cos(theta);
+
+skyUniforms['sunPosition'].value.copy(sun);
+scene.environment = sky;
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+directionalLight.position.copy(sun);
+scene.add(directionalLight);
+
+// Camera setup
+camera.position.set(0, 10, 15);
+camera.lookAt(hero.position);
+
+// Controls
+const controls = {
+    moveForward: false,
+    moveBackward: false,
+    moveLeft: false,
+    moveRight: false,
+    moveUp: false,
+    moveDown: false
+};
+
+document.addEventListener('keydown', (event) => {
+    switch(event.code) {
+        case 'ArrowUp':
+        case 'KeyW': controls.moveForward = true; break;
+        case 'ArrowDown':
+        case 'KeyS': controls.moveBackward = true; break;
+        case 'ArrowLeft':
+        case 'KeyA': controls.moveLeft = true; break;
+        case 'ArrowRight':
+        case 'KeyD': controls.moveRight = true; break;
+        case 'Space': controls.moveUp = true; break;
+        case 'ShiftLeft': controls.moveDown = true; break;
+    }
+});
+
+document.addEventListener('keyup', (event) => {
+    switch(event.code) {
+        case 'ArrowUp':
+        case 'KeyW': controls.moveForward = false; break;
+        case 'ArrowDown':
+        case 'KeyS': controls.moveBackward = false; break;
+        case 'ArrowLeft':
+        case 'KeyA': controls.moveLeft = false; break;
+        case 'ArrowRight':
+        case 'KeyD': controls.moveRight = false; break;
+        case 'Space': controls.moveUp = false; break;
+        case 'ShiftLeft': controls.moveDown = false; break;
+    }
+});
+
+// Collision detection
+function checkCollision() {
+    const origin = hero.position.clone();
+    origin.y -= 1; // Check below the hero
+    
+    const raycaster = new THREE.Raycaster(origin, new THREE.Vector3(0, -1, 0), 0, 2);
+    const intersects = raycaster.intersectObjects(scene.children);
+    
+    if (intersects.length > 0 && intersects[0].distance < 1.5) {
+        hero.position.y += 0.2; // Bump up if too close to ground
+    }
+}
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+    
+    const speed = 0.2;
+    const lookSpeed = 0.05;
+    
+    // Movement
+    if (controls.moveForward) hero.translateZ(-speed);
+    if (controls.moveBackward) hero.translateZ(speed);
+    if (controls.moveLeft) hero.translateX(-speed);
+    if (controls.moveRight) hero.translateX(speed);
+    if (controls.moveUp) hero.position.y += speed;
+    if (controls.moveDown) hero.position.y -= speed;
+    
+    // Camera follow
+    camera.position.lerp(new THREE.Vector3(
+        hero.position.x,
+        hero.position.y + 5,
+        hero.position.z - 10
+    ), 0.1);
+    
+    camera.lookAt(hero.position);
+    
+    checkCollision();
+    
+    renderer.render(scene, camera);
+}
+
+animate();
+
+// Window resize handling
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+  </html>
